@@ -4,6 +4,7 @@ This project aims to predict the final sales price of homes using linear regress
 # Project Goal
 The primary objective is to build a linear regression model that accurately predicts home prices. The goal is to achieve a minimum out-of-sample R² of 0.85 through cross-validation on the training data. Additionally, we aim for a Kaggle score of less than 0.15 (if applicable). 
 
+# Dataset 
 It's a publicly available dataset from kaggle.com and the link is provided below. 
 
 https://www.kaggle.com/competitions/house-prices-advanced-regression-techniques/data 
