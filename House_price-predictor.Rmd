@@ -1,0 +1,652 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+library(tidyverse)
+pacman::p_load(tidyverse, gt)
+```
+## Description of the Data
+Getting and understanding data that will be used to create the model and for test prediction:
+```{r}
+#Loading the train and test data in the variables named train and test  
+test <- read_csv("test.csv")
+train <- read_csv("train.csv")
+```
+
+```{r}
+#Printing the structure of the data
+str(train, give.attr= "false")
+```
+
+From the above results, the data has 81 columns, which are aspects of the home. Out of 81 columns, the Id column is an identifier, which is arbitrary and won't be considered a predictor. The SalePrice column is the target variable, which will be used as a response variable to build and train the model. The test data has the same columns as train data except for the SalePrice . Thus, we have 79 variables that can be considered to be used as predictors in model building.
+
+There are 1460 rows or observations in training data, each representing a house in Ames, Iowa, with certain sets of characteristics. The test data has 1459 observations. The test and train data are split, each having 50% of the total data.
+
+There are 38 numeric(num) variables and 43 character(char) variables. Some of the numeric variables are SalePrice(Target Variable), LotArea (lot size in square feet), and GrLivArea (above-ground living area in square feet). A few categorical variables are MSZoning (general zoning classification), HouseStyle (dwelling style) and Neighborhood.
+
+## Discussion of Missing Data 
+List of all the variables with missing values, i.e. having NA as values.
+
+```{r}
+#creating a function to count the total number of NAs in each column
+count_missings <- function(x) sum(is.na(x))
+
+# Summarizing all the columns and their NA value count in training data
+cols <- train |> 
+  summarize_all(count_missings) 
+
+#Filtering and printing only the columns that has NA values
+data.frame(t(cols)) |> filter(data.frame(t(cols))[,1]>0)
+```
+There are a total of 19 variables having NA as values. 
+
+1. LotFrontage, Linear feet of street connected to property: 259 NAs, a lot of rows that we can't afford to lose while modeling.
+    According to the data dictionary, LotFrontage does not have any special meaning assigned to it, so there is a possibility it is just the missing values; it is best to replace it with a median.
+    
+```{r}
+# Replacing NA with medians and saving the result back into the original data
+train <- train |> 
+  mutate(LotFrontage = replace_na(LotFrontage, median(LotFrontage, na.rm = T))) 
+
+# Checking that it worked
+train$LotFrontage |>
+  summary()
+
+```
+2. Alley, according to the data dictionary represents the Type of alley access to property
+
+       Grvl	Gravel 
+       Pave	Paved
+       NA 	No alley access 
+We can replace NA with none, which will convey the same information. 
+
+```{r}
+
+# Replacing NA with "none" and saving the result back into the original data
+train <- train |> 
+  mutate(Alley = replace_na(data = Alley, replace = "none")) # Overwrite the existing column with new values
+
+# Checking that it worked
+gt(train |>
+  count(Alley))
+```
+3. MasVnrType -
+MasVnrType: Masonry veneer type <br>
+
+       BrkCmn	Brick Common 
+       BrkFace	Brick Face
+       CBlock	Cinder Block
+       None	None
+       Stone	Stone<br>
+There is no description of NA, and there is a field specifically called none to represent the values where there is no Veneer type. So, NAs are possible mistakes when typing.  
+
+4. MasVnrArea: Masonry veneer area in square feet; it is a numeric value.
+
+```{r}
+#Displaying the rows which have NA value in MasVnrArea and MasVnrType columns
+gt(train |> select(Id,MasVnrArea,MasVnrType ) |> filter(is.na(MasVnrType) | is.na(MasVnrArea)))
+```
+We can observe that for the values where MasVnrType is NA, MasVnrArea is also NA, so we will not do anything about the NAs in both columns. In total, the lm() function will automatically drop the eight rows with these NA values.
+
+5.
+BsmtQual: Evaluates the height of the basement<br>
+      
+       Ex	Excellent (100+ inches)	
+       Gd	Good (90-99 inches)
+       TA	Typical (80-89 inches)
+       Fa	Fair (70-79 inches)
+       Po	Poor (<70 inches
+       NA	No Basement
+6.		
+BsmtCond: Evaluates the general condition of the basement<br>
+       
+       Ex	Excellent
+       Gd	Good
+       TA	Typical - slight dampness allowed
+       Fa	Fair - dampness or some cracking or settling
+       Po	Poor - Severe cracking, settling, or wetness
+       NA	No Basement
+
+
+7.
+BsmtExposure: Refers to walkout or garden level walls<br>
+      
+       Gd	Good Exposure
+       Av	Average Exposure (split levels or foyers typically score average or above)	
+       Mn	Mimimum Exposure
+       No	No Exposure
+       NA	No Basement
+       
+8.
+BsmtFinType1: Rating of basement finished area<br>
+      
+       GLQ	Good Living Quarters
+       ALQ	Average Living Quarters
+       BLQ	Below Average Living Quarters	
+       Rec	Average Rec Room
+       LwQ	Low Quality
+       Unf	Unfinshed
+       NA	No Basement
+
+9.
+BsmtFinType2: Rating of basement finished area (if multiple types)<br>
+      
+       GLQ	Good Living Quarters
+       ALQ	Average Living Quarters
+       BLQ	Below Average Living Quarters	
+       Rec	Average Rec Room
+       LwQ	Low Quality
+       Unf	Unfinshed
+       NA	No Basement
+The NA here represents no basement, so the value is replaced with a value representing no basement.
+
+```{r}
+# Replacing NA with "none" and saving the result back into the original data
+train <- train |> 
+  # Overwrite the existing column with new values
+  mutate(BsmtQual = replace_na(data = BsmtQual, replace = "none"),
+         BsmtCond = replace_na(data = BsmtCond, replace = "none"),
+         BsmtExposure = replace_na(data = BsmtExposure, replace = "none"),
+         BsmtFinType1 = replace_na(data = BsmtFinType1, replace = "none"),
+         BsmtFinType2 = replace_na(data = BsmtFinType2, replace = "none")) 
+
+# Checking that it worked
+gt(train |>
+  count(BsmtQual))
+
+gt(train |>
+  count(BsmtCond))
+
+gt(train |>
+  count(BsmtExposure))
+
+gt(train |>
+  count(BsmtFinType1))
+
+gt(train |>
+  count(BsmtFinType2))
+```
+10.
+Electrical: Electrical system<br>
+      
+       SBrkr	Standard Circuit Breakers & Romex
+       FuseA	Fuse Box over 60 AMP and all Romex wiring (Average)	
+       FuseF	60 AMP Fuse Box and mostly Romex wiring (Fair)
+       FuseP	60 AMP Fuse Box and mostly knob & tube wiring (poor)
+       Mix	Mixed
+Here, NA does not have a specific representation, and there is only 1 NA value. It's probably a mistake that the NA value is there, so we will just remove that row; it won't make any difference in the data set. The lm() function will automatically remove that row, so we don't have to do anything.<br>
+
+11.
+FireplaceQu: Fireplace quality<br>
+
+       Ex	Excellent - Exceptional Masonry Fireplace
+       Gd	Good - Masonry Fireplace in main level
+       TA	Average - Prefabricated Fireplace in main living area or Masonry Fireplace in basement
+       Fa	Fair - Prefabricated Fireplace in basement
+       Po	Poor - Ben Franklin Stove
+       NA	No Fireplace 
+Six hundred ninety values are NA for this field, representing no fireplace. The NA values have been replaced.
+```{r}
+# Replacing NA with "none" and saving the result back into the original data
+train <- train |> 
+  # Overwrite the existing column with new values
+  mutate(FireplaceQu = replace_na(data = FireplaceQu, replace = "none"))
+
+# Checking that it worked
+gt(train |>
+  count(FireplaceQu))
+
+
+```
+
+12. GarageYrBlt: The year the garage was built. The NA value here represents that no garage was built, so it has no year value. Replaced NA with 0; 0 is the arbitrary value symbolizing no garage was built.  <br> 
+
+13.
+GarageType: Garage location <br>
+
+       2Types	More than one type of garage
+       Attchd	Attached to home
+       Basment	Basement Garage
+       BuiltIn	Built-In (Garage part of house - typically has room above garage)
+       CarPort	Car Port
+       Detchd	Detached from home
+       NA	No Garage 
+
+14.
+GarageFinish: Interior finish of the garage <br>
+
+       Fin	Finished
+       RFn	Rough Finished	
+       Unf	Unfinished
+       NA	No Garage
+       
+15.
+GarageQual: Garage quality <br>
+
+       Ex	Excellent
+       Gd	Good
+       TA	Typical/Average
+       Fa	Fair
+       Po	Poor
+       NA	No Garage
+
+16.
+GarageCond: Garage condition <br>
+
+       Ex	Excellent
+       Gd	Good
+       TA	Typical/Average
+       Fa	Fair
+       Po	Poor
+       NA	No Garage 
+The NA represents no garage built for the columns GarageType, GarageFinish, GarageQual, and GarageCond. 
+```{r}
+
+# Replacing NA with "none" and saving the result back into the original data
+train <- train |> 
+  # Overwrite the existing column with new values
+  mutate(GarageYrBlt = replace_na(data = GarageYrBlt, replace = 0),
+         GarageType = replace_na(data = GarageType, replace = "none"),
+         GarageQual = replace_na(data = GarageQual, replace = "none"),
+         GarageFinish = replace_na(data = GarageFinish, replace = "none"),
+         GarageCond = replace_na(data = GarageCond, replace = "none")) 
+
+# Checking that it worked
+
+gt(train |> filter(GarageYrBlt == 0 ) |>
+  count(GarageYrBlt))
+
+gt(train |>
+  count(GarageType))
+
+gt(train |>
+  count(GarageQual))
+
+gt(train |>
+  count(GarageFinish))
+
+gt(train |>
+  count(GarageCond))
+
+
+```
+
+17.
+PoolQC: Pool quality<br>
+
+       Ex	Excellent
+       Gd	Good
+       TA	Average/Typical
+       Fa	Fair
+       NA	No Pool
+NA value here represents no pool; we can replace NA with none.
+
+18.
+Fence: Fence quality<br>
+
+       GdPrv	Good Privacy
+       MnPrv	Minimum Privacy
+       GdWo	Good Wood
+       MnWw	Minimum Wood/Wire
+       NA	No Fence
+NA value here represents no fence; we can replace NA with none.
+
+19.
+MiscFeature: Miscellaneous feature not covered in other categories<br>
+
+       Elev	Elevator
+       Gar2	2nd Garage (if not described in garage section)
+       Othr	Other
+       Shed	Shed (over 100 SF)
+       TenC	Tennis Court
+       NA	None
+NA value here represents that there is no Miscellaneous feature not covered in other categories; we can replace NA with none.
+
+       
+```{r}
+# Replacing NA with "none" and saving the result back into the original data
+train <- train |> 
+  # Overwrite the existing column with new values
+  mutate(PoolQC = replace_na(data = PoolQC, replace = "none"),
+         Fence = replace_na(data = Fence, replace = "none"),
+         MiscFeature = replace_na(data = MiscFeature, replace = "none")) 
+
+# Checking that it worked
+gt(train |> 
+  count(PoolQC))
+
+gt(train |>
+  count(Fence))
+
+gt(train |>
+  count(MiscFeature))
+
+```
+
+```{r}
+
+# Summarizing all the columns and their NA value count in training data
+cols <- train |> 
+  summarize_all(count_missings) 
+
+#Filtering and printing only the columns that has NA values
+data.frame(t(cols)) |> filter(data.frame(t(cols))[,1]>0)
+```
+
+The NA values from almost all the columns in training data are replaced or imputed. The remaining columns still having NA values will get removed automatically during modeling by the lm() function.
+
+## Data Exploration
+
+Evaluating a few predictors that might seem strongly correlated to the sales price of the house, then study their interaction with sales price (a numeric target variable) using plots or summary tables. Based on the results, the predictors shall be finalised and will be used during modeling to provide the seemingly best predictive result of the sales price for the project.
+
+## Visualisation
+Creating visualisations to understand the relationships better and determine the best predictors
+
+1. The first column is 1stFlrSF, First Floor Area in sqft. It is a numeric variable, so a scatter plot can be used as both sales price and 1stFlrSF are continuous variables.
+
+```{r}
+ggplot(train, aes(x= `1stFlrSF`, y = SalePrice))+
+         geom_point(color = "skyblue", alpha = 0.5) +
+  geom_smooth(method="lm", se = FALSE, color = "skyblue"
+              ) +
+  labs(title= "1stFlrSF v/s SalePrice", x="First Floor Area", y="Sales Price") + 
+  theme_minimal()
+```
+The plot shows that as the first floor area increases in square feet, the house's sales price also increases. With the help of a steep Regression Line, we can conclude that the increase is linear and 1stFlrSF is a strong candidate that can be used as a predictor for the predictive linear regression model. On average, the higher value of 1stFlrSF will predict a higher sale price and vice-versa. 
+
+
+2.Moving onto the next plausible predictor, BldgType, i.e., type of dwelling. It is a categorical variable, and to see if the sales price changes with different dwelling types compared to the reference dwelling value, linear regression summary table is used.
+
+```{r}
+# Plot the interaction effect
+ggplot(train, aes(x = GrLivArea, y = SalePrice, color = Neighborhood)) +
+  geom_point(alpha = 0) +
+  geom_smooth(method = "lm", aes(group = Neighborhood), se = FALSE) +
+  labs(title = "Interaction Effect of GrLivArea and Neighborhood on SalePrice",
+    x = "Above Ground Living Area",
+    y = "Sale Price",
+    color = "Neighborhood"
+  ) +
+  theme_minimal()
+```
+
+<br> From the plot, there is a positive relationship between GrLivArea (above-ground living area) and SalePrice indicating that larger homes have hogher SalePrices.The slopes of the lines vary by neighborhood, suggesting that the price increase per additional unit of GrLivArea depends on the neighborhood. Hence, Neighborhood and GrLivArea are important predictors for predictive modeling.
+
+3. Another predictor that might strongly influence sales price is Neighborhood, i.e., physical locations within Ames city limits. It is a categorical variable, so a bar graph is used to show the median Sales Price for each Neighborhood.
+```{r}
+# Checking the relationship between SalePrice and Neighborhood using bar plot
+train |> 
+  ggplot(aes(x = reorder(Neighborhood, SalePrice, FUN = median), y = SalePrice)) +
+  stat_summary(fun = "median", geom = "bar", fill = "lightblue") +
+  labs(title = "SalePrice ~ Neighborhood", x="Neighborhood", y="Sales Price") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+
+```
+It is observed that as the Neighborhood changes, the sales price for the house also changes. Neighborhoods like Iowa DOT, Meadow Village, Briardale, etc, have lower selling prices of around $100,000. Whereas, neighborhoods like Northridge and Northridge Heights have selling prices around $300,000. 
+There is a relevant correlation between Neighborhood and sales price.
+
+4. Next is YearBuilt, the original construction date of the house. It is a numeric value;so a heat map to assess how the sales price varies with the built year.
+```{r}
+#Checking the relationship between SalePrice and YearBuilt using heat map
+#The 5 year slots are binned together to make the chart more comprehensible
+#Sales price is also binned in 20 categories
+train |>
+  ggplot(aes(x = cut(YearBuilt, breaks = seq(1870, 2020, by = 5)), y = cut(SalePrice, breaks = 20))) + 
+  geom_tile(stat = "bin2d", aes(fill = ..count..), color = "white") + 
+   scale_fill_gradient(low = "lightblue", high = "darkblue") +  # Using a color scale for count
+  labs(title = "Heatmap of SalePrice vs. YearBuilt", x = "Year Built", y = "Sales Price") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+From the heat map, it is noticeable how the houses built before the 1950s have lower selling prices;  looking at the years from the 1950s to 1980s, there is a gradual increase in selling price values, also the number of houses built then and sold in the same price range is higher than previous decades. In the era of 1980-2020, there is a significant increase in sale price and number of houses sold.
+The construction year of the house definitely affects the sales price; newer construction results in a relatively higher sales price. So, we can use YearBuilt as one of the predictors for the predictive model.
+
+5. Evaluating whether OverallQual value affects SalePrice. It is a numeric value; here, each number from 1-10 rates the overall material and finish of the house. Since the number represents the category, converted it into a factor and used box plot to describe the relationship between a categorical(OverallQual ) and a numeric variable(sales price). 
+```{r}
+#Checking the relationship between SalePrice and OverallQual using box plot
+train |> 
+  ggplot(aes(factor(OverallQual), SalePrice)) +
+  geom_boxplot(fill = "lightblue", color = "#3B3C36", outlier.colour = "#72A0C1") +
+  labs(title = "SalePrice ~ OverallQual", x = "Overall Quality", y = "Sales Price")
+
+```
+
+From the plot, it can be concluded that as the overall quality increases, the sales price also increases in value and variability; this shows that overall quality and sales price are strongly related, and OverallQual can be used as one of the predictors for our prediction model.
+
+## Summary Table For Interaction Model
+Fitting a linear regression model to examine the relationship between SalePrice, GrLivArea (above-ground living area), and Neighborhood, with an interaction term between GrLivArea and Neighborhood. The following summary table presents the coefficients, significance levels, and overall fit, giving a view of how each predictor contributes to the model's predictions.
+```{r}
+# Fit interaction model
+model <- lm(SalePrice ~ GrLivArea * Neighborhood, data = train)
+summary(model)
+```
+
+It is observes that the model performs well, explaining 79.15% of the variability in SalePrice through the R-square, which shows that it effectively captures the relationship between the predictors and SalePrice. We can see that GrLivArea has a positive impact, indicating that larger homes generally sell for higher prices. Neighborhood differences also play a role, and the model accounts for these interactions to provide insights into pricing trends.Hence, the model with a p-value of 2.2e-16 indicates that GrLivArea and Neighborhood are the two predictors that are statistically significant. 
+
+
+
+## Modeling
+
+From the above analysis, few predictors that have a significant relationship with Sales Price are BldgType, OverallQual, GrLivArea, Neighborhood, YearBuilt, 1stFlrSF. Using these predictors and few others to train the linear regression model for predictive analysis of Sales Price.
+
+1.  Splitting the train set into two "folds" of 70/30 (*train fold* and *validation fold*) to perform cross-validation in the next section.
+
+Creating an index of random 70% of rows:
+
+```{r}
+# Randomly sampling 70% of the rows in an object called index
+set.seed(124)
+index <- sample(x = 1:nrow(train), size = nrow(train)*.7, replace = F)
+
+# Check
+head(index) # These are the 70% randomly sampled row numbers
+
+```
+
+Using the index to create a random 70/30 split of the data:
+
+```{r}
+# Subset train using index to create a 70% train_fold
+train_fold <- train[index, ]
+
+# Subset the remaining rows not included in index to create a 30% validation fold
+validation_fold <- train[-index, ]
+```
+
+2. Fitting the model to the train_fold and study the model's performance metrics.
+```{r}
+# Fitting the model on train_fold values using the predictors and interaction between Neighborhood & GrLivArea.
+model <- lm(SalePrice ~ BldgType + factor(OverallQual) +  GrLivArea * factor(Neighborhood) + ExterCond + CentralAir  + HeatingQC  + LotArea +  YearBuilt + OverallCond + factor(KitchenQual) + factor(Alley) + Foundation + FireplaceQu + TotRmsAbvGrd + MSSubClass + HouseStyle + ExterQual + LowQualFinSF + MiscVal + YearRemodAdd + WoodDeckSF +  EnclosedPorch + `3SsnPorch` + ScreenPorch + YrSold + MoSold + `1stFlrSF`, data = train_fold)
+
+# Checking the performance of the above model using various metrics
+
+# Residuals
+residuals_values <- residuals(model)
+
+# Residual Sum of Squares (RSS)
+rss <- sum(residuals_values^2)
+
+# RMSE (Root Mean Squared Error)
+rmse <- sqrt(mean(residuals_values^2))
+
+# Summary for performance-related statistics
+performance_summary <- data.frame(
+  R_squared = round(summary(model)$r.squared,2),
+  RMSE = rmse,
+  RSE= summary(model)$sigma,
+  Adjusted_R_squared = round(summary(model)$adj.r.squared,2)
+)
+
+# View the summary
+gt(performance_summary)
+
+```
+
+* From the above summary table,it is observed that the R-square is 0.91 when the model predicts the training_fold data set. It is a good score, almost near one. Thus, 91% of the variance in the dependent variables is explained by the model.<br>
+
+* RMSE of 23420.03 means that, on average, the model's predictions deviate from the actual values by approximately 23420.03 units. Thus, the predicted sales price, on average, deviates by approximately $23420.03 from the actual price. It is not that huge of a value considering the scale of Sales Price. The model is good enough. <br>
+
+* RSE of 24807.31 signifies that the typical residuals (errors) size is about 24807.31 units. It's similar to RMSE and leads to the same conclusion as above. <br>
+
+* The Adjusted R-squared is 0.90, i.e., after adjusting for the number of predictors in the model, 90% of the variability is still explained by the model. Here, the R-squared and Adjusted R-squared are almost equal; hence, the model is not overfitted.<br>
+
+
+## Cross Validation
+
+Cross-validation is a method for using the training data to obtain realistic estimates of how a model will perform in practice with new data. We are using the validation set method; we have already split the data into two parts - train_fold and validation_fold, in the above section, we will move on to the next steps.<br>
+
+1.  Evaluating the model(fit to train_fold) on validation_fold; RMSE and R-squared on the validation fold will be the estimate of the model's out-of-sample performance(This is the model's estimated performance with new data, such as the test data.)
+```{r}
+
+# Getting predictions for the validation fold
+predictions <- predict(model, newdata = validation_fold)
+
+# Creating functions for calculating RMSE and R-squared (necessary for estimating out of sample performance)
+
+#calculating RMSE
+rmse <- function(observed, predicted) sqrt(mean((observed - predicted)^2))
+
+#calculating R-square
+R2 <- function(observed, predicted){
+  TSS <- sum((observed - mean(observed))^2)
+  RSS <- sum((observed - predicted)^2)
+  1- RSS/TSS
+}
+
+# Estimated out of sample RMSE
+rmse(validation_fold$SalePrice, predictions)
+
+# Estimated out of sample R-squared
+R2(validation_fold$SalePrice, predictions) |> round(2)
+```
+The estimated RMSE with test data is 29465.85,** i.e. on average, the model's predictions deviate from the actual values by approximately 29465.85 units which is not that large compared to the scale of the Sales price.
+The estimated out-of-sample R^2^ is 0.87, which is more than the required threshold of 0.85.** <br>
+So, the model performs well according to the project requirements. Also, *the R^2^ value of train_fold and validation_fold is near, so we don't have the case of overfitting.
+
+## Kaggle Submission
+
+1.  Fitting the model using the entire train set and calculating in sample performance.
+
+```{r}
+# Fitting the model to the entire train set.
+submission_model <- lm( SalePrice ~ BldgType + factor(OverallQual) + GrLivArea * factor(Neighborhood) + CentralAir  + HeatingQC  + LotArea  + YearBuilt + OverallCond + ExterCond + factor(Alley) + factor(KitchenQual) + Foundation + FireplaceQu + TotRmsAbvGrd + MSSubClass + HouseStyle + ExterQual + LowQualFinSF + MiscVal + YearRemodAdd + WoodDeckSF  + EnclosedPorch + `3SsnPorch` + ScreenPorch + YrSold + `1stFlrSF`, data = train)
+
+# R-squared and RMSE for this model will be the estimated in-sample model performance
+residuals_values <- residuals(model)
+
+# RMSE (Root Mean Squared Error)
+rmse <- sqrt(mean(residuals_values^2))
+
+# Summary for performance-related statistics
+performance_summary <- data.frame(
+  R_squared = round(summary(model)$r.squared,2),
+  RMSE = rmse,
+  RSE= summary(model)$sigma
+)
+
+# Viewing the summary
+gt(performance_summary)
+  
+
+```
+
+
+* In sample R-square: 0.91.
+* In sample RMSE: 23420.03, this is the model's average residual error (in dollars).
+* In sample RSE(residual standard error): 23420.03, it is similar to RMSE, which is the deviation of the predicted sales price on average. 
+
+2. Checking there are no missing observations for the selected predictors in the test set. 
+```{r}
+# Checking for NAs
+gt(test |> 
+  select(BldgType, OverallQual, GrLivArea, Neighborhood, YearBuilt, CentralAir, MSSubClass, HeatingQC, LotArea, OverallCond, ExterCond, KitchenQual, Alley, Foundation, FireplaceQu, TotRmsAbvGrd, MSSubClass, HouseStyle, ExterQual, LowQualFinSF, MiscVal, YearRemodAdd, WoodDeckSF, EnclosedPorch,  `3SsnPorch`, ScreenPorch, YrSold, `1stFlrSF`) |>
+  summarize_all(count_missings)) 
+```
+
+We can observe that Kitchen Quality, Fire Place Quality and Alley have NA values, so we will replcae the NAs before prediction.
+
+```{r}
+#Creating Mode Function
+get_mode <- function(x) {
+  # Exclude NA values
+  x <- na.omit(x)
+  # Find the most frequent value
+  uniq_vals <- unique(x)
+  uniq_vals[which.max(tabulate(match(x, uniq_vals)))]
+}
+get_mode(test$KitchenQual)
+
+# Replacing NA with mode and saving the result back into the original data
+test <- test |> 
+  mutate(KitchenQual = replace_na(data = KitchenQual, replace = "TA")) 
+
+# Checking that it worked
+test$KitchenQual |>
+  summary() 
+
+# Replacing NA with none and saving the result back into the original data
+test <- test |> 
+  mutate(Alley = replace_na(data = Alley, replace = "none")) 
+
+# Checking that it worked
+test$Alley |>
+  summary() 
+
+# Replacing NA with none and saving the result back into the original data
+test <- test |> 
+  mutate(FireplaceQu = replace_na(data = FireplaceQu, replace = "none")) 
+
+# Checking that it worked
+test$FireplaceQu |>
+  summary()
+
+```
+
+There are no NA values in predictor so we are safe to proceed further and predict for the test values.
+
+3.  Using the model to predict the missing SalePrice in the test set.
+
+```{r}
+# Predicting for the test set.
+submission_predictions <- predict(submission_model, newdata = test) 
+
+head(submission_predictions)
+
+#Checking if there is any NA value in predicted list 
+is.na(submission_predictions) |> sum()
+  
+```
+There are no NA value in the list.
+
+
+
+4. Formatting the submission file.
+
+```{r}
+#Formatting the file according to sample submission file.
+
+submission <- test |> 
+  select(Id) |> 
+  mutate(SalePrice = submission_predictions)
+
+# Check
+gt(head(submission))
+
+# write to csv
+write.csv(submission, "kaggle_submission.csv", row.names = F)
+
+```
+
+After the analysis, modeling, and predicting of House Prices - Advanced Regression Techniques data sets, these are the performance metrics:
+
+1. RMSE and R^2^ on the train set: 
+   a. RMSE - 23420.03
+   b. R^2^ - 0.91
+2. Estimated RMSE and R^2^ on the test set:
+   a. RMSE - 29465.85
+   b. R^2^ - 0.87
+3. Kaggle Score (returned log RMSE) and Rank:
+   a. Kaggle Score - 0.14904
+   b. Rank - 3422
+   
