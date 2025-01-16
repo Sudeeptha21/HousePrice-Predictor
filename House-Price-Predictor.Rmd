@@ -605,7 +605,7 @@ test$FireplaceQu |>
 
 There are no NA values in predictor so we are safe to proceed further and predict for the test values.
 
-3.  Using the model to predict the missing Sale Price in the test set.
+3.  Using the model to predict the missing SalePrice in the test set.
 
 ```{r}
 # Predicting for the test set.
